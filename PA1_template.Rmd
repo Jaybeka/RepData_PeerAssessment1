@@ -1,25 +1,138 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "PA1_template"
+output: html_document
 ---
-
 
 ## Loading and preprocessing the data
 
+First, we need to set work directory and local language, load the data. We'd like to see the summary of data. 
 
+```{r, results='hide'}
+setwd("G:/DataAnalysis//repdata")
+Sys.setlocale(category="LC_TIME",local="USA")
+act <- read.csv("activity.csv")
+summary(act)
+```
+
+The type of date values is `Factor`, which has to be transformed to `Date`.
+
+```{r}
+act$date <- as.Date(act$date)
+```
 
 ## What is mean total number of steps taken per day?
 
+We use ggplot2 to make the histogram of the total number of steps taken each day. If you don't have it, use `install.packages("ggplot2")` to install.
 
+```{r, results='hide'}
+library(ggplot2)
+qplot(date, data = act, weight = steps, geom = "histogram", binwidth = 1)
+```
+
+Next, we use `by` function to calculate the **mean** and **median** total
+number of steps taken per day.
+
+```{r, results='hide'}
+steps.by.day <- with(act,
+                     aggregate(steps, list(date), 
+                               function(x) sum(x, na.rm = TRUE)))
+names(steps.by.day) <- c("date", "total")
+mea <- mean(steps.by.day$total)
+med <- median(steps.by.day$total)
+```
+
+the **mean** total number of steps taken per day: `r mea`  
+the **median** total number of steps taken per day: `r med`
 
 ## What is the average daily activity pattern?
 
+Let's make a time series plot of the 5-minute interval (x-axis) and the
+average number of steps taken, averaged across all days (y-axis). We also
+compute the maximum number of the averaged across all the days.
 
+```{r, results='hide'}
+steps.by.interval <- with(act,
+            aggregate(steps, list(interval),
+               function(x) mean(x, na.rm = TRUE)))
+names(steps.by.interval) <- c("interval", "mean")
+max.avg <- max(steps.by.interval$mean)
+max.int <- steps.by.interval[steps.by.interval$mean == max.avg, "interval"]
+qplot(interval, mean, data = steps.by.interval, geom = "line")
+```
+
+We could see most steps taken between interval 500 and 2000, the peak comes
+at interval `r max.int`, and the maximum number is `r max.avg`.
 
 ## Imputing missing values
 
+As we can see in the summary before, the total number of `NA`, all of which
+are in `steps` variables in this dataset is:
 
+```{r, echo=FALSE}
+sum(is.na(act$steps))
+```
+
+We have calculated the total number of steps taken by day. When reading the
+data we could find that it's `NA` on 1 Oct, 2012.
+
+```{r, echo=FALSE}
+head(steps.by.day)
+```
+
+It suggests that the data of steps might be `NA` of all the intervals in one 
+day. We cannot calculate the mean or median of that day. So, we are going to 
+fill the `NA`s with the average steps by interval across all these days.
+
+```{r, results='hide', warning=FALSE}
+library(dplyr)
+new.act <- arrange(act, date)
+naData <- filter(new.act, is.na(steps))
+naData <- merge(naData, steps.by.interval, by = "interval", all = FALSE)
+naData <- arrange(naData, date)
+new.act[is.na(new.act$steps), "steps"] <- naData$mean
+```
+
+We use package `dplyr` to make the data match. Again, we draw the histogram
+of the steps take by day, and calculate the **mean** and **median**.
+
+```{r, results='hide'}
+qplot(date, data = new.act, weight = steps, geom = "histogram", 
+      binwidth = 1)
+
+steps.by.day <- with(new.act,
+                     aggregate(steps, list(date), 
+                               function(x) sum(x, na.rm = TRUE)))
+names(steps.by.day) <- c("date", "total")
+mea <- mean(steps.by.day$total)
+med <- median(steps.by.day$total)
+```
+
+the **mean** total number of steps taken per day: `r mea`  
+the **median** total number of steps taken per day: `r med`
+
+Both **mean** and **median** are greater than themselves used to be. When filling these missing values, the total daily number is closer to our guess other than it actually is.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+We create the factor variables to note if that day is weekend.
+
+```{r}
+new.act <- mutate(new.act, 
+                  weekends = as.factor(
+                    ifelse(weekdays(date) %in% c("Saturday", "Sunday"),
+                           "Weekend", "weekday")))
+```
+
+Now draw the panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+```{r, results='hide'}
+steps.by.interval <- with(new.act,
+            aggregate(steps, list(interval, weekends),
+               function(x) mean(x, na.rm = TRUE)))
+names(steps.by.interval) <- c("interval", "weekends", "mean")
+qplot(interval, mean, data = steps.by.interval, geom = "line", facets =  weekends ~. )
+```
+
+The frequent activities start earlier in weekdays. 
+The peak of the steps number dosen't appear in weekends. 
+There are more intervals in which number of steps are over 100 in weekends, between interval 1000 and 2000. 
